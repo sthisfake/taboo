@@ -1,14 +1,21 @@
 {
   "name": "go-xhttp-relay (Codespaces)",
-  "image": "mcr.microsoft.com/devcontainers/go:1-1.22-bullseye",
+  "build": {
+    "dockerfile": "./Dockerfile",
+    "context": ".."
+  },
   "features": {
-    "ghcr.io/devcontainers/features/sshd:1": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": false
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {
       "version": "latest"
     },
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+    "ghcr.io/devcontainers/features/sshd:1": {
       "version": "latest"
     }
   },
+  "mounts": ["source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"],
   "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
@@ -19,7 +26,7 @@
   "remoteEnv": {
     "PORT": "3000"
   },
-  "postCreateCommand": "go mod tidy",
+  "postAttachCommand": "bash -lc '.devcontainer/startup.sh'",
   "customizations": {
     "vscode": {
       "settings": {
