@@ -1,6 +1,11 @@
 {
   "name": "go-xhttp-relay (Codespaces)",
   "image": "mcr.microsoft.com/devcontainers/go:1-1.22-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
+    }
+  },
   "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
