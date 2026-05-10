@@ -1,0 +1,23 @@
+{
+  "name": "go-xhttp-relay (Codespaces)",
+  "image": "mcr.microsoft.com/devcontainers/go:1-1.22-bullseye",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Go relay",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "remoteEnv": {
+    "PORT": "3000"
+  },
+  "postCreateCommand": "go mod tidy",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "go.toolsManagement.autoUpdate": true
+      },
+      "extensions": ["golang.Go"]
+    }
+  }
+}

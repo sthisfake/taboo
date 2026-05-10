@@ -1,0 +1,10 @@
+# Environment
+.env
+
+# Vercel
+.vercel
+
+# Go build outputs
+*.exe
+*.out
+*.test
