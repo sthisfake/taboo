@@ -1,0 +1,8 @@
+.git
+.gitignore
+.devcontainer
+.env
+*.exe
+*.out
+*.test
+**/.DS_Store
