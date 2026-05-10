@@ -1,6 +1,9 @@
 FROM mcr.microsoft.com/devcontainers/go:1-1.22-bookworm
 
-RUN apt-get update \
+# The base image may include 3rd-party apt sources (e.g. Yarn) without keys.
+# Remove any such sources to keep apt-get update reliable in Codespaces.
+RUN rm -f /etc/apt/sources.list.d/yarn.list /etc/apt/sources.list.d/yarn.list.save \
+  && apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release \
   && rm -rf /var/lib/apt/lists/*
 
