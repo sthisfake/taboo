@@ -16,3 +16,8 @@ RUN set -eux; \
   apt-get update; \
   apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin; \
   rm -rf /var/lib/apt/lists/*
+
+COPY .devcontainer/startup.sh /usr/local/bin/startup.sh
+
+RUN sed -i 's/\r$//' /usr/local/bin/startup.sh \
+    && chmod +x /usr/local/bin/startup.sh

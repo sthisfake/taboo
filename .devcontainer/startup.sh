@@ -1,14 +1,33 @@
+#!/usr/bin/env bash
 set -euo pipefail
 
-echo "== versions =="
-command -v go >/dev/null && go version || echo "go: missing"
-command -v docker >/dev/null && docker --version || echo "docker: missing"
-command -v docker >/dev/null && docker compose version || echo "docker compose: missing"
+cd /workspaces/taboo
 
-echo "== env =="
-echo "PORT=${PORT:-}"
-echo "TARGET_DOMAIN=${TARGET_DOMAIN:-}"
+echo "== waiting for docker =="
 
-echo "== next =="
-echo "Run: go mod tidy && go run ."
-echo "Or:  docker compose up --build"
+until docker info >/dev/null 2>&1; do
+  sleep 2
+done
+
+echo "== starting compose =="
+
+docker compose up -d --build
+
+echo "== waiting for app =="
+
+until curl -s http://localhost:3000 >/dev/null; do
+  sleep 2
+done
+
+echo "== setting public port =="
+
+gh codespace ports visibility 3000:public || true
+
+echo "== keepalive =="
+
+nohup bash -c '
+while true; do
+  echo "$(date) keepalive $(uuidgen)"
+  sleep 20
+done
+' >/tmp/keepalive.log 2>&1 &

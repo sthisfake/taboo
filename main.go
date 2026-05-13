@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -21,5 +22,14 @@ func main() {
 		port = "3000"
 	}
 
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	log.Printf("github relay listening on :%s", port)
+
+	log.Fatal(server.ListenAndServe())
 }

@@ -1,9 +1,11 @@
 {
   "name": "go-xhttp-relay (Codespaces)",
+
   "build": {
-    "dockerfile": "./Dockerfile",
+    "dockerfile": "Dockerfile",
     "context": ".."
   },
+
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
       "installZsh": false
@@ -15,24 +17,40 @@
       "version": "latest"
     }
   },
-  "mounts": ["source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"],
+
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+
   "forwardPorts": [3000],
+
   "portsAttributes": {
     "3000": {
       "label": "Go relay",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "openBrowser",
+      "visibility": "public"
     }
   },
+
   "remoteEnv": {
     "PORT": "3000"
   },
-  "postAttachCommand": "bash -lc '.devcontainer/startup.sh'",
+
+  "postAttachCommand": "bash /workspaces/taboo/.devcontainer/startup.sh",
+
+  "hostRequirements": {
+    "cpus": 2
+  },
+
   "customizations": {
     "vscode": {
       "settings": {
         "go.toolsManagement.autoUpdate": true
       },
-      "extensions": ["golang.Go"]
+
+      "extensions": [
+        "golang.Go"
+      ]
     }
   }
 }

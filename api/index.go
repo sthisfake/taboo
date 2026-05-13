@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -10,23 +12,94 @@ import (
 )
 
 var (
+	allowedPrefixes = []string{"/vless"}
+
 	stripHeaders = map[string]struct{}{
 		"host":                {},
-		"connection":          {},
-		"keep-alive":          {},
 		"proxy-authenticate":  {},
 		"proxy-authorization": {},
 		"te":                  {},
 		"trailer":             {},
 		"transfer-encoding":   {},
-		"upgrade":             {},
 		"forwarded":           {},
 		"x-forwarded-host":    {},
 		"x-forwarded-proto":   {},
 		"x-forwarded-port":    {},
 	}
-	allowedPrefixes = []string{"/xhttp", "/vless"}
+
+	targetURL *url.URL
+	proxy     *httputil.ReverseProxy
 )
+
+func init() {
+	targetBase := strings.TrimSpace(os.Getenv("TARGET_DOMAIN"))
+	if targetBase == "" {
+		log.Fatal("TARGET_DOMAIN is not set")
+	}
+
+	var err error
+	targetURL, err = url.Parse(targetBase)
+	if err != nil {
+		log.Fatalf("invalid TARGET_DOMAIN: %v", err)
+	}
+
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+
+		ForceAttemptHTTP2: false,
+
+		MaxIdleConns:        1000,
+		MaxIdleConnsPerHost: 1000,
+		MaxConnsPerHost:     0,
+
+		IdleConnTimeout:       120 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+
+		ExpectContinueTimeout: 1 * time.Second,
+
+		DisableCompression: true,
+
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+	}
+
+	proxy = &httputil.ReverseProxy{
+		Transport: transport,
+
+		Director: func(req *http.Request) {
+			req.URL.Scheme = targetURL.Scheme
+			req.URL.Host = targetURL.Host
+
+			req.Host = targetURL.Host
+
+			originalHeaders := req.Header.Clone()
+
+			req.Header = make(http.Header)
+			copyHeaders(req.Header, originalHeaders)
+
+			// preserve websocket upgrade headers
+			if strings.EqualFold(originalHeaders.Get("Upgrade"), "websocket") {
+				req.Header.Set("Connection", "Upgrade")
+				req.Header.Set("Upgrade", "websocket")
+			}
+
+			clientIP := clientRealIP(req)
+			if clientIP != "" {
+				req.Header.Set("X-Forwarded-For", clientIP)
+			}
+		},
+
+		FlushInterval: 10 * time.Millisecond,
+
+		ErrorHandler: func(rw http.ResponseWriter, r *http.Request, err error) {
+			log.Printf("proxy error: %v", err)
+			http.Error(rw, "Bad Gateway", http.StatusBadGateway)
+		},
+	}
+}
 
 func Handler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/healthz" {
@@ -36,64 +109,12 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetBase := strings.TrimSpace(os.Getenv("TARGET_DOMAIN"))
-	if targetBase == "" {
-		http.Error(w, "Misconfigured: TARGET_DOMAIN is not set", http.StatusInternalServerError)
-		return
-	}
-
 	if !isAllowedPath(r.URL.Path) {
 		http.NotFound(w, r)
 		return
 	}
 
-	target, err := url.Parse(targetBase)
-	if err != nil {
-		http.Error(w, "Bad TARGET_DOMAIN", http.StatusBadGateway)
-		return
-	}
-	targetURL := *target
-	targetURL.Path = r.URL.Path
-	targetURL.RawPath = r.URL.EscapedPath()
-	targetURL.RawQuery = r.URL.RawQuery
-	if _, err := url.Parse(targetURL.String()); err != nil {
-		http.Error(w, "Bad TARGET_DOMAIN or request URL", http.StatusBadGateway)
-		return
-	}
-
-	rp := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			req.URL.Scheme = targetURL.Scheme
-			req.URL.Host = targetURL.Host
-			req.URL.Path = targetURL.Path
-			req.URL.RawPath = targetURL.RawPath
-			req.URL.RawQuery = targetURL.RawQuery
-			req.Host = targetURL.Host
-
-			// Build upstream headers from the original request while removing problematic ones.
-			req.Header = make(http.Header)
-			copyHeaders(req.Header, r.Header)
-
-			clientIP := strings.TrimSpace(r.Header.Get("x-real-ip"))
-			if clientIP == "" {
-				clientIP = strings.TrimSpace(r.Header.Get("x-forwarded-for"))
-			}
-			if clientIP != "" {
-				req.Header.Set("x-forwarded-for", clientIP)
-			}
-		},
-		Transport: &http.Transport{
-			ForceAttemptHTTP2:   true,
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 100,
-			IdleConnTimeout:     90 * time.Second,
-		},
-		FlushInterval: -1, // flush immediately for streaming-style transports
-		ErrorHandler: func(rw http.ResponseWriter, _ *http.Request, _ error) {
-			http.Error(rw, "Bad Gateway: Tunnel Failed", http.StatusBadGateway)
-		},
-	}
-	rp.ServeHTTP(w, r)
+	proxy.ServeHTTP(w, r)
 }
 
 func isAllowedPath(path string) bool {
@@ -108,16 +129,36 @@ func isAllowedPath(path string) bool {
 func copyHeaders(dst, src http.Header) {
 	for k, vv := range src {
 		lk := strings.ToLower(k)
+
 		if _, blocked := stripHeaders[lk]; blocked {
 			continue
 		}
+
 		if strings.HasPrefix(lk, "x-vercel-") {
 			continue
 		}
+
 		for _, v := range vv {
 			dst.Add(k, v)
 		}
 	}
 }
 
-// reverse proxy copies response headers/body itself.
+func clientRealIP(r *http.Request) string {
+	ip := strings.TrimSpace(r.Header.Get("X-Real-IP"))
+	if ip != "" {
+		return ip
+	}
+
+	ip = strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if ip != "" {
+		return strings.Split(ip, ",")[0]
+	}
+
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
+	}
+
+	return ""
+}
