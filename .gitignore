@@ -8,4 +8,4 @@
 *.exe
 *.out
 *.test
-/shalow
+/shalow/services_*
